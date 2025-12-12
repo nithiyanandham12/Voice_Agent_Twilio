@@ -410,8 +410,8 @@ async def process_speech(
     
     messages = conversations.get(call_sid, []) + [{"role": "user", "content": user_text}]
     
+    llm_start = datetime.now()
     try:
-        llm_start = datetime.now()
         ai_response = get_llm_response(messages)
         llm_duration = (datetime.now() - llm_start).total_seconds()
         
