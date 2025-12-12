@@ -117,15 +117,20 @@ app.add_middleware(
 )
 
 
-def get_llm_response(messages, model=GROQ_LLM_MODEL):
+def get_llm_response(messages, model=GROQ_LLM_MODEL, timeout=30):
     """
     Helper: Get AI response from Groq LLM
     
     Purpose: Centralized function to call Groq API with consistent settings
     Why: Reusable across voice and chat endpoints, consistent error handling
     Returns: AI-generated text response
+    Raises: TimeoutError if request times out, Exception for other errors
     """
+    import asyncio
+    import signal
+    
     try:
+        # Note: Groq SDK doesn't have built-in timeout, but we handle it at the exception level
         completion = groq_client.chat.completions.create(
             model=model,
             messages=messages,
@@ -134,6 +139,11 @@ def get_llm_response(messages, model=GROQ_LLM_MODEL):
         )
         return completion.choices[0].message.content.strip()
     except Exception as e:
+        error_str = str(e).lower()
+        # Check for timeout-related errors
+        if "timeout" in error_str or "timed out" in error_str or "connection" in error_str:
+            log.error(f"LLM Timeout Error: {str(e)}")
+            raise TimeoutError(f"LLM request timed out: {str(e)}")
         log.error(f"LLM Error: {str(e)}")
         raise
 
@@ -313,18 +323,50 @@ async def process_speech(
     log.info(f"   Call SID: {call_sid}")
     log.info(f"   Speech Result Length: {len(SpeechResult) if SpeechResult else 0}")
     
-    # Validate speech input
+    # Validate speech input - Handle silence / no speech
     if not SpeechResult or len(SpeechResult.strip()) < 2:
         log.warning("⚠️  No speech detected or speech too short")
         json_logger.log_event(
             event_type="speech_processing",
             call_sid=call_sid,
             step="no_speech_detected",
-            data={"error": "No speech or speech too short"},
+            data={
+                "error": "No speech or speech too short",
+                "error_type": "silence_or_no_speech",
+                "speech_result_length": len(SpeechResult) if SpeechResult else 0
+            },
             duration=(datetime.now() - process_start_time).total_seconds()
         )
         
         response = VoiceResponse()
+        response.say("I didn't hear anything. Please speak again.", voice="alice")
+        gather = Gather(
+            input="speech",
+            action=f"/api/voice/process?call_sid={call_sid}",
+            method="POST",
+            speech_timeout="auto"
+        )
+        response.append(gather)
+        log.info("=" * 60)
+        return Response(content=str(response), media_type="application/xml")
+    
+    # Handle STT failure (empty or invalid transcription)
+    if SpeechResult.strip().lower() in ["", "error", "failed", "timeout"]:
+        log.warning("⚠️  STT failure detected")
+        json_logger.log_event(
+            event_type="stt",
+            call_sid=call_sid,
+            step="stt_failure",
+            data={
+                "error": "STT failure",
+                "error_type": "stt_failure",
+                "speech_result": SpeechResult
+            },
+            duration=(datetime.now() - process_start_time).total_seconds()
+        )
+        
+        response = VoiceResponse()
+        response.say("I'm having trouble understanding. Please try again.", voice="alice")
         gather = Gather(
             input="speech",
             action=f"/api/voice/process?call_sid={call_sid}",
@@ -342,6 +384,7 @@ async def process_speech(
     stt_start = datetime.now()
     log.info(f"📝 STEP 1: SPEECH-TO-TEXT (STT)")
     log.info(f"   Source: Twilio Speech Recognition")
+    log.info(f"   Note: Twilio handles STT internally, no raw audio file received")
     log.info(f"   Transcribed Text: \"{user_text}\"")
     log.info(f"   Text Length: {len(user_text)} characters")
     log.info(f"   Turn Number: {turn_num}")
@@ -355,7 +398,8 @@ async def process_speech(
             "provider": "twilio",
             "transcribed_text": user_text,
             "text_length": len(user_text),
-            "turn_number": turn_num
+            "turn_number": turn_num,
+            "note": "Twilio handles STT internally, no raw audio file available"
         },
         duration=stt_duration
     )
@@ -379,9 +423,48 @@ async def process_speech(
         log.info(f"   Response: \"{ai_response[:100]}{'...' if len(ai_response) > 100 else ''}\"")
         log.info(f"   Processing Time: {llm_duration:.2f} seconds")
         
+        # Log LLM response
+        json_logger.log_event(
+            event_type="llm",
+            call_sid=call_sid,
+            step="llm_response",
+            data={
+                "model": GROQ_LLM_MODEL,
+                "model_response_text": ai_response,
+                "response_length": len(ai_response),
+                "turn_number": turn_num
+            },
+            duration=llm_duration
+        )
+        
+    except TimeoutError as e:
+        ai_response = "I apologize, but the request timed out. Please try again."
+        log.error(f"❌ LLM TIMEOUT: {str(e)}")
+        json_logger.log_event(
+            event_type="llm",
+            call_sid=call_sid,
+            step="llm_timeout",
+            data={
+                "error": str(e),
+                "error_type": "timeout",
+                "turn_number": turn_num
+            },
+            duration=(datetime.now() - llm_start).total_seconds()
+        )
     except Exception as e:
-        ai_response = f"Error: {str(e)}"
+        ai_response = f"I apologize, but I encountered an error: {str(e)}"
         log.error(f"❌ LLM ERROR: {str(e)}")
+        json_logger.log_event(
+            event_type="llm",
+            call_sid=call_sid,
+            step="llm_error",
+            data={
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "turn_number": turn_num
+            },
+            duration=(datetime.now() - llm_start).total_seconds()
+        )
     
     # STEP 3: Text-to-Speech
     log.info(f"🔊 STEP 3: TEXT-TO-SPEECH (TTS)")
@@ -392,10 +475,13 @@ async def process_speech(
     tts_duration = (datetime.now() - tts_start).total_seconds()
     
     audio_url = None
+    tts_filename = None
     if wav_path:
+        tts_filename = os.path.basename(wav_path)
         base_url = str(request.base_url).rstrip("/")
-        audio_url = f"{base_url}/api/voice/audio/{os.path.basename(wav_path)}"
+        audio_url = f"{base_url}/api/voice/audio/{tts_filename}"
         log.info(f"✅ TTS Audio generated successfully")
+        log.info(f"   TTS Filename: {tts_filename}")
         log.info(f"   Audio URL: {audio_url}")
         log.info(f"   TTS Time: {tts_duration:.2f} seconds")
         
@@ -405,8 +491,9 @@ async def process_speech(
             step="text_to_speech",
             data={
                 "provider": "gtts",
-                "text_length": len(ai_response),
+                "tts_filename": tts_filename,
                 "audio_url": audio_url,
+                "text_length": len(ai_response),
                 "turn_number": turn_num
             },
             duration=tts_duration
@@ -417,7 +504,12 @@ async def process_speech(
             event_type="tts",
             call_sid=call_sid,
             step="tts_error",
-            data={"error": "TTS generation failed", "fallback": "twilio_tts"},
+            data={
+                "error": "TTS generation failed",
+                "error_type": "tts_failure",
+                "fallback": "twilio_tts",
+                "turn_number": turn_num
+            },
             duration=tts_duration
         )
     
