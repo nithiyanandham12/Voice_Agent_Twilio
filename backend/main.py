@@ -24,7 +24,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_LLM_MODEL = os.getenv("GROQ_LLM_MODEL", "llama-3.3-70b-versatile")
 AUDIO_DIR = os.getenv("AUDIO_DIR", "audio_files")
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
-API_PORT = int(os.getenv("PORT", "7860"))  # HF Spaces default
+API_PORT = int(os.getenv("PORT", "8000"))  # Default 8000 for local dev, 7860 for HF Spaces
 
 # Twilio creds - can be set via UI or .env
 TWILIO_CREDENTIALS = {
@@ -1006,6 +1006,10 @@ if __name__ == "__main__":
         duration=0
     )
     
-    port = int(os.getenv("PORT", "7860"))
-    log.info(f"   Using port: {port} (Hugging Face Spaces)")
+    port = int(os.getenv("PORT", "8000"))
+    log.info(f"   Using port: {port}")
+    if port == 7860:
+        log.info(f"   (Hugging Face Spaces mode)")
+    else:
+        log.info(f"   (Local development mode)")
     uvicorn.run(app, host="0.0.0.0", port=port)
