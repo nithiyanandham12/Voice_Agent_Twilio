@@ -129,7 +129,116 @@ You can deploy the `build` folder to:
 - **GitHub Pages** - Use `gh-pages` package
 - **Any static hosting** - Upload build folder contents
 
-## Step 6: Verify Installation
+## Step 6: Configure Twilio Connection
+
+The frontend provides a user-friendly interface to configure Twilio credentials without editing configuration files.
+
+### 6.1 Get Twilio Credentials
+
+Before configuring in the frontend, you need:
+
+1. **Twilio Account SID**
+   - Log in to [Twilio Console](https://console.twilio.com/)
+   - Find your **Account SID** on the dashboard (starts with "AC")
+   - Example: `ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+
+2. **Twilio Auth Token**
+   - In Twilio Console, click the eye icon to reveal your **Auth Token**
+   - Copy the full token (usually 32 characters)
+
+3. **Twilio Phone Number**
+   - Go to **Phone Numbers** → **Manage** → **Active numbers**
+   - Copy your phone number with country code (e.g., `+1234567890`)
+
+### 6.2 Configure via Frontend UI
+
+1. **Open the Twilio Configuration Panel:**
+   - In the frontend UI, look for the **"Twilio Configuration"** section (usually on the left sidebar)
+   - Click to expand the configuration panel
+
+2. **Enter Credentials:**
+   - **Account SID**: Paste your Twilio Account SID
+   - **Auth Token**: Paste your Twilio Auth Token
+   - **Phone Number**: Enter your Twilio phone number with country code (e.g., `+1234567890`)
+
+3. **Submit Configuration:**
+   - Click the **"Connect"** or **"Save"** button
+   - The system will validate your credentials with Twilio API
+   - You'll see a success message if credentials are valid
+
+4. **Verify Connection:**
+   - Look for the connection status indicator
+   - It should show "Connected: +1234567890" (your phone number)
+   - A green status indicator confirms successful connection
+
+### 6.3 Configure Twilio Webhook
+
+After connecting Twilio credentials in the frontend:
+
+1. **Copy Webhook URL:**
+   - In the Twilio Configuration panel, you'll see a **"Twilio Webhook URL"** field
+   - Click the **"Copy"** button to copy the webhook URL
+   - Example: `https://your-backend-domain.com/api/voice/incoming`
+
+2. **Set Webhook in Twilio Console:**
+   - Go to [Twilio Console](https://console.twilio.com/)
+   - Navigate to **Phone Numbers** → **Manage** → **Active numbers**
+   - Click on your phone number
+   - Scroll to **Voice & Fax** section
+   - Under **"A CALL COMES IN"**, paste the webhook URL
+   - Set **HTTP Method** to `POST`
+   - Click **Save**
+
+### 6.4 For Local Development
+
+If testing locally, you need a public URL for the webhook:
+
+1. **Use ngrok** (recommended):
+   ```bash
+   # Install ngrok: https://ngrok.com/download
+   ngrok http 8000
+   ```
+   - Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
+   - Use: `https://abc123.ngrok.io/api/voice/incoming` as webhook URL
+
+2. **Use localtunnel**:
+   ```bash
+   npm install -g localtunnel
+   lt --port 8000
+   ```
+   - Copy the provided URL
+   - Use: `https://your-url.loca.lt/api/voice/incoming` as webhook URL
+
+3. **Update Webhook in Twilio:**
+   - Use the ngrok/localtunnel URL in Twilio webhook settings
+   - Remember to update it when the URL changes
+
+### 6.5 Credential Storage
+
+- Credentials are stored securely in browser's localStorage
+- Auth Token is masked (shown as `••••••••••••••••`) for security
+- Credentials persist across browser sessions
+- To update credentials, expand the Twilio Configuration panel and enter new values
+
+### 6.6 Troubleshooting Twilio Connection
+
+**Invalid Credentials Error:**
+- Verify Account SID starts with "AC" and is ~34 characters
+- Check Auth Token is complete (usually 32 characters)
+- Ensure phone number includes country code with "+" prefix
+
+**Connection Failed:**
+- Verify backend is running and accessible
+- Check backend API endpoint: `GET /api/twilio/credentials`
+- Ensure CORS is configured to allow frontend origin
+
+**Webhook Not Working:**
+- Verify webhook URL is publicly accessible
+- Check webhook URL uses HTTPS (required by Twilio)
+- Test webhook URL manually: `curl -X POST https://your-webhook-url`
+- Check Twilio Console logs for webhook delivery status
+
+## Step 7: Verify Installation
 
 1. **Check if frontend is running:**
    - Open `http://localhost:3000` in your browser
@@ -140,7 +249,12 @@ You can deploy the `build` folder to:
    - Look for connection status indicator in the UI
    - If disconnected, verify backend is running and `REACT_APP_API_URL` is correct
 
-3. **Test voice functionality:**
+3. **Verify Twilio connection:**
+   - Check Twilio Configuration panel shows "Connected" status
+   - Verify phone number is displayed correctly
+   - Test webhook by making a call to your Twilio number
+
+4. **Test voice functionality:**
    - Click the microphone button
    - Allow microphone permissions when prompted
    - Speak a message
@@ -325,11 +439,43 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
+## Twilio Configuration Summary
+
+### Quick Setup Checklist
+
+- [ ] Get Twilio Account SID from Twilio Console
+- [ ] Get Twilio Auth Token from Twilio Console
+- [ ] Get Twilio Phone Number (with country code)
+- [ ] Enter credentials in frontend Twilio Configuration panel
+- [ ] Verify connection status shows "Connected"
+- [ ] Copy webhook URL from frontend
+- [ ] Configure webhook in Twilio Console (Phone Numbers → Your Number → Webhook)
+- [ ] Test by calling your Twilio phone number
+
+### Webhook Configuration
+
+**Frontend shows:**
+```
+Twilio Webhook URL: https://your-backend.com/api/voice/incoming
+```
+
+**Set in Twilio Console:**
+- URL: `https://your-backend.com/api/voice/incoming`
+- Method: `POST`
+
+### Security Notes
+
+- Auth Token is masked in the UI for security
+- Credentials are stored in browser localStorage
+- To update credentials, enter new values in the configuration panel
+- For production, consider using environment variables in backend
+
 ## Next Steps
 
 - Connect to your backend API
-- Configure Twilio settings in the UI
+- Configure Twilio settings via the UI (see Step 6)
 - Test voice conversation functionality
+- Test phone calls through Twilio
 - Deploy to production
 
 ## Support
