@@ -39,12 +39,20 @@ LLM_TEMPERATURE = 1
 LLM_MAX_TOKENS = 1024
 CONVERSATION_HISTORY_LIMIT = 10
 
+# Enhanced logging configuration
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.StreamHandler(),  # Console output
+    ]
 )
 log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+
+# Ensure logs directory exists
+os.makedirs("logs", exist_ok=True)
 
 
 class JSONLogger:
@@ -78,8 +86,10 @@ class JSONLogger:
         try:
             with open(self.log_file, 'w') as f:
                 json.dump(self.logs, f, indent=2)
+            log.info(f"💾 JSON log saved: {len(self.logs)} entries")
         except Exception as e:
-            log.error(f"Failed to save logs: {e}")
+            log.error(f"❌ Failed to save JSON logs: {e}")
+            print(f"ERROR: Failed to save JSON logs: {e}")
     
     def log_event(self, event_type, call_sid=None, step=None, data=None, duration=None):
         now = datetime.now()
@@ -94,6 +104,16 @@ class JSONLogger:
             "duration_seconds": duration
         }
         self.logs.append(log_entry)
+        
+        # Print to terminal for immediate visibility
+        print(f"\n📋 JSON LOG [{log_entry['time']}] {event_type} | {step or 'N/A'}")
+        if call_sid:
+            print(f"   Call SID: {call_sid}")
+        if data:
+            print(f"   Data: {json.dumps(data, indent=2)}")
+        if duration is not None:
+            print(f"   Duration: {duration:.3f}s")
+        
         self.save_logs()
         return log_entry
 
@@ -205,6 +225,16 @@ async def root():
     Use case: Quick health check or API discovery
     """
     log.info("🌐 ROOT ENDPOINT ACCESSED")
+    print("=" * 60)
+    print("🌐 ROOT ENDPOINT ACCESSED")
+    print("=" * 60)
+    
+    json_logger.log_event(
+        event_type="api_access",
+        step="root_endpoint",
+        data={"endpoint": "/", "method": "GET"}
+    )
+    
     return {
         "message": "Voice AI Assistant API",
         "status": "running",
@@ -231,6 +261,14 @@ async def status():
     Use case: Health monitoring, debugging, or checking API availability
     """
     log.info("📊 STATUS CHECK - API is running")
+    print("📊 STATUS CHECK - API is running")
+    
+    json_logger.log_event(
+        event_type="api_access",
+        step="status_check",
+        data={"endpoint": "/api/status", "method": "GET", "status": "running"}
+    )
+    
     return {
         "status": "running",
         "model": GROQ_LLM_MODEL,
@@ -259,12 +297,18 @@ async def incoming_call(CallSid: str = Form(...), From: str = Form(...)):
     3. Return TwiML that says "Hello! Please speak" and starts listening
     4. Next step: Twilio sends speech to /api/voice/process
     """
+    print("\n" + "=" * 60)
+    print(f"📞 INCOMING CALL")
+    print(f"   Call SID: {CallSid}")
+    print(f"   From: {From}")
+    print("=" * 60)
     log.info(f"📞 INCOMING CALL - SID: {CallSid}, From: {From}")
     
     # Initialize conversation
     conversations[CallSid] = [
         {"role": "system", "content": SYSTEM_PROMPT}
     ]
+    print(f"✅ Conversation initialized for Call SID: {CallSid}")
     
     # Create TwiML response
     response = VoiceResponse()
@@ -281,8 +325,11 @@ async def incoming_call(CallSid: str = Form(...), From: str = Form(...)):
         event_type="call_incoming",
         call_sid=CallSid,
         step="call_received",
-        data={"from": From}
+        data={"from": From, "action": "initialized_conversation"}
     )
+    
+    print(f"✅ TwiML response created, waiting for speech...")
+    print("=" * 60 + "\n")
     
     return Response(content=str(response), media_type="application/xml")
 
@@ -315,10 +362,27 @@ async def process_speech(
     """
     process_start_time = datetime.now()
     
+    print("\n" + "=" * 60)
+    print(f"🔄 PROCESSING SPEECH REQUEST")
+    print(f"   Call SID: {call_sid}")
+    print(f"   Speech Result Length: {len(SpeechResult) if SpeechResult else 0}")
+    print("=" * 60)
+    
     log.info("=" * 60)
     log.info(f"🔄 PROCESSING SPEECH REQUEST")
     log.info(f"   Call SID: {call_sid}")
     log.info(f"   Speech Result Length: {len(SpeechResult) if SpeechResult else 0}")
+    
+    json_logger.log_event(
+        event_type="speech_processing",
+        call_sid=call_sid,
+        step="request_received",
+        data={
+            "speech_result_length": len(SpeechResult) if SpeechResult else 0,
+            "has_speech": bool(SpeechResult and len(SpeechResult.strip()) >= 2)
+        },
+        duration=0
+    )
     
     # Validate speech input - Handle silence / no speech
     if not SpeechResult or len(SpeechResult.strip()) < 2:
@@ -379,6 +443,13 @@ async def process_speech(
     
     # STEP 1: Speech-to-Text (already done by Twilio)
     stt_start = datetime.now()
+    print(f"\n📝 STEP 1: SPEECH-TO-TEXT (STT)")
+    print(f"   Source: Twilio Speech Recognition")
+    print(f"   Note: Twilio handles STT internally, no raw audio file received")
+    print(f"   Transcribed Text: \"{user_text}\"")
+    print(f"   Text Length: {len(user_text)} characters")
+    print(f"   Turn Number: {turn_num}")
+    
     log.info(f"📝 STEP 1: SPEECH-TO-TEXT (STT)")
     log.info(f"   Source: Twilio Speech Recognition")
     log.info(f"   Note: Twilio handles STT internally, no raw audio file received")
@@ -402,6 +473,10 @@ async def process_speech(
     )
     
     # STEP 2: LLM Processing
+    print(f"\n🤖 STEP 2: LLM PROCESSING")
+    print(f"   Model: {GROQ_LLM_MODEL}")
+    print(f"   Sending to LLM...")
+    
     log.info(f"🤖 STEP 2: LLM PROCESSING")
     log.info(f"   Model: {GROQ_LLM_MODEL}")
     
@@ -415,6 +490,10 @@ async def process_speech(
         # Update conversation history
         messages.append({"role": "assistant", "content": ai_response})
         conversations[call_sid] = messages[-CONVERSATION_HISTORY_LIMIT:]
+        
+        print(f"✅ LLM Response received")
+        print(f"   Response: \"{ai_response[:100]}{'...' if len(ai_response) > 100 else ''}\"")
+        print(f"   Processing Time: {llm_duration:.2f} seconds")
         
         log.info(f"✅ LLM Response received")
         log.info(f"   Response: \"{ai_response[:100]}{'...' if len(ai_response) > 100 else ''}\"")
@@ -464,6 +543,10 @@ async def process_speech(
         )
     
     # STEP 3: Text-to-Speech
+    print(f"\n🔊 STEP 3: TEXT-TO-SPEECH (TTS)")
+    print(f"   Provider: Google TTS (gTTS)")
+    print(f"   Generating audio...")
+    
     log.info(f"🔊 STEP 3: TEXT-TO-SPEECH (TTS)")
     log.info(f"   Provider: Google TTS (gTTS)")
     
@@ -477,6 +560,11 @@ async def process_speech(
         tts_filename = os.path.basename(wav_path)
         base_url = str(request.base_url).rstrip("/")
         audio_url = f"{base_url}/api/voice/audio/{tts_filename}"
+        print(f"✅ TTS Audio generated successfully")
+        print(f"   TTS Filename: {tts_filename}")
+        print(f"   Audio URL: {audio_url}")
+        print(f"   TTS Time: {tts_duration:.2f} seconds")
+        
         log.info(f"✅ TTS Audio generated successfully")
         log.info(f"   TTS Filename: {tts_filename}")
         log.info(f"   Audio URL: {audio_url}")
@@ -511,14 +599,18 @@ async def process_speech(
         )
     
     # STEP 4: Send Response
+    print(f"\n📤 STEP 4: SENDING RESPONSE")
     log.info(f"📤 STEP 4: SENDING RESPONSE")
+    
     response = VoiceResponse()
     
     if audio_url:
         response.play(audio_url)
+        print(f"   Using generated audio file: {tts_filename}")
         log.info(f"   Using generated audio file")
     else:
         response.say(ai_response, voice="alice")
+        print(f"   Using Twilio text-to-speech fallback")
         log.info(f"   Using Twilio text-to-speech fallback")
     
     gather = Gather(
@@ -539,6 +631,10 @@ async def process_speech(
         data={"turn_number": turn_num, "total_steps": 4},
         duration=total_duration
     )
+    
+    print(f"\n✅ Response sent to Twilio")
+    print(f"   Total Processing Time: {total_duration:.2f} seconds")
+    print("=" * 60 + "\n")
     
     log.info(f"✅ Response sent to Twilio")
     log.info(f"   Total Processing Time: {total_duration:.2f} seconds")
