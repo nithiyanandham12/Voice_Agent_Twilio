@@ -413,6 +413,10 @@ async def process_speech(
     
     # Handle STT failure (empty or invalid transcription)
     if SpeechResult.strip().lower() in ["", "error", "failed", "timeout"]:
+        print(f"⚠️  STT failure detected")
+        print(f"   Speech Result: '{SpeechResult}'")
+        print("=" * 60 + "\n")
+        
         log.warning("⚠️  STT failure detected")
         json_logger.log_event(
             event_type="stt",
@@ -515,6 +519,7 @@ async def process_speech(
         
     except TimeoutError as e:
         ai_response = "I apologize, but the request timed out. Please try again."
+        print(f"❌ LLM TIMEOUT: {str(e)}")
         log.error(f"❌ LLM TIMEOUT: {str(e)}")
         json_logger.log_event(
             event_type="llm",
@@ -529,6 +534,8 @@ async def process_speech(
         )
     except Exception as e:
         ai_response = f"I apologize, but I encountered an error: {str(e)}"
+        print(f"❌ LLM ERROR: {str(e)}")
+        print(f"   Error Type: {type(e).__name__}")
         log.error(f"❌ LLM ERROR: {str(e)}")
         json_logger.log_event(
             event_type="llm",
@@ -584,6 +591,7 @@ async def process_speech(
             duration=tts_duration
         )
     else:
+        print(f"⚠️  TTS failed, falling back to Twilio TTS")
         log.warning("⚠️  TTS failed, falling back to Twilio TTS")
         json_logger.log_event(
             event_type="tts",
