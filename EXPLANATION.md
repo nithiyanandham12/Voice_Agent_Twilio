@@ -1,284 +1,183 @@
 # Voice AI Assistant - Technical Explanation Document
 
 **Version:** 1.0.0  
-**Last Updated:** December 2024  
-**Project Status:** Production Ready
+**Last Updated:** December 2024
 
 ---
 
 ## 1. Technology Choices
 
 ### Backend Framework: FastAPI
-**Why FastAPI?**
-- **Performance**: Built on Starlette and Pydantic, FastAPI is one of the fastest Python frameworks, crucial for real-time voice processing
-- **Async Support**: Native async/await support enables concurrent handling of multiple voice calls without blocking
-- **Type Safety**: Automatic request validation and OpenAPI documentation generation
-- **Developer Experience**: Modern Python features, clear error messages, and excellent IDE support
+
+FastAPI was selected as the backend framework for several reasons. It provides high performance through its foundation on Starlette and Pydantic, which is crucial for real-time voice processing where latency matters. The framework offers native async/await support, enabling concurrent handling of multiple voice calls without blocking operations. Additionally, FastAPI provides automatic request validation, type safety through Pydantic, and generates OpenAPI documentation automatically, improving developer experience and code reliability.
 
 ### LLM Provider: Groq
-**Why Groq?**
-- **Speed**: Groq's LPU (Language Processing Unit) provides extremely fast inference, essential for voice conversations where latency matters
-- **Cost-Effective**: Competitive pricing compared to OpenAI, making it suitable for production use
-- **API Simplicity**: Clean REST API with straightforward integration
-- **Model Variety**: Access to multiple models including Llama 3.3 70B
 
-### Text-to-Speech: Google TTS (gTTS) - Current Implementation
-**Why gTTS?**
-- **Free Tier**: No API costs for reasonable usage volumes
-- **Quality**: Natural-sounding speech synthesis
-- **Simplicity**: Easy integration with Python
-- **Language Support**: Supports multiple languages (though we use English)
-- **Note**: Falls back to Twilio TTS if gTTS fails, ensuring reliability
+Groq was chosen as the LLM provider primarily for its speed. Groq's Language Processing Unit (LPU) provides extremely fast inference times, typically 1-2 seconds, which is essential for voice conversations where users expect quick responses. The service offers competitive pricing compared to alternatives like OpenAI, making it cost-effective for production use. The API is straightforward to integrate with a clean REST interface, and provides access to multiple models including the Llama 3.3 70B variant we use.
 
-**Production Enhancement - WebSocket TTS:**
-- **Current**: File-based TTS (generate MP3/WAV, serve via HTTP)
-- **Future**: Real-time WebSocket TTS for lower latency
-- **Benefits**: Stream audio chunks as they're generated, faster response time
-- **Implementation**: WebSocket connection to TTS service, stream audio directly to Twilio
+### Speech-to-Text: Twilio Built-in STT (Current)
 
-### Voice Platform: Twilio
-**Why Twilio?**
-- **Reliability**: Industry-leading telephony infrastructure with 99.95% uptime SLA
-- **Speech Recognition**: Built-in STT eliminates need for separate STT service (currently used)
-- **Global Reach**: Supports phone numbers in 180+ countries
-- **Developer-Friendly**: Excellent documentation, webhook-based architecture
-- **Scalability**: Handles high call volumes automatically
-
-**Current STT Implementation:**
-- **Twilio Built-in STT**: Currently using Twilio's speech recognition service
-- **How it works**: Twilio processes audio on their servers, sends transcribed text via webhook
-- **Advantages**: No additional service needed, reliable, integrated with call flow
+Currently, we use Twilio's built-in speech recognition service. This eliminates the need for a separate STT service and simplifies the architecture. Twilio processes audio on their servers and sends transcribed text via webhook, which integrates seamlessly with the call flow. This approach is reliable and requires no additional infrastructure.
 
 **Production Enhancement - WebSocket STT:**
-- **Future Option**: Real-time WebSocket-based STT for advanced use cases
-- **Benefits**: Lower latency, more control over recognition process, custom models
-- **Use Cases**: When you need specialized speech recognition or real-time streaming
-- **Implementation**: WebSocket connection to STT service (e.g., Deepgram, AssemblyAI), stream audio chunks
+For production environments requiring lower latency or specialized recognition, we can implement WebSocket-based STT services such as Deepgram or AssemblyAI. This would enable real-time transcription as users speak, provide lower latency, allow custom model selection, and offer better accuracy for specific accents or domains.
+
+### Text-to-Speech: Google TTS (gTTS) - Current Implementation
+
+Google TTS (gTTS) is used for text-to-speech conversion. It offers a free tier with no API costs for reasonable usage volumes, provides natural-sounding speech synthesis, and is simple to integrate with Python. The system generates MP3 files, converts them to WAV format (required by Twilio), and serves them via HTTP. If TTS generation fails, the system automatically falls back to Twilio's built-in TTS, ensuring reliability.
+
+**Production Enhancement - WebSocket TTS:**
+In production, we can implement WebSocket-based TTS streaming to reduce latency significantly. Instead of generating complete audio files, we would stream audio chunks as they're generated directly to Twilio, eliminating the file generation and conversion steps. This approach can reduce TTS latency by 40-60% and provide a better user experience.
+
+### Voice Platform: Twilio
+
+Twilio provides industry-leading telephony infrastructure with a 99.95% uptime SLA, making it highly reliable for production use. It supports phone numbers in over 180 countries, enabling global reach. The platform offers excellent documentation and a webhook-based architecture that is developer-friendly. Twilio automatically handles high call volumes, providing built-in scalability without additional infrastructure.
 
 ### Frontend: React
-**Why React?**
-- **Component-Based**: Modular architecture for maintainable UI
-- **Web Speech API**: Native browser support for speech recognition and synthesis
-- **Real-Time Updates**: Efficient state management for live conversation
-- **Ecosystem**: Rich ecosystem of libraries and tools
-- **Performance**: Virtual DOM for optimized rendering
+
+React was selected for the frontend due to its component-based architecture, which enables maintainable and modular UI development. React works seamlessly with the Web Speech API, providing native browser support for speech recognition and synthesis in the web interface. The framework offers efficient state management for real-time conversation updates and has a rich ecosystem of libraries and tools. React's Virtual DOM provides optimized rendering performance.
 
 ### Logging: Custom JSON Logger
-**Why Custom Logger?**
-- **Structured Data**: JSON format enables easy parsing and analysis
-- **Persistence**: Logs survive server restarts
-- **Debugging**: Detailed step-by-step logging for troubleshooting
-- **Analytics**: Structured format allows for performance analysis and monitoring
+
+A custom JSON logger was implemented to provide structured logging. The JSON format enables easy parsing and analysis of log data, making it simple to track performance, debug issues, and generate analytics. Logs persist across server restarts, stored in a JSON file. The logger provides detailed step-by-step logging for all operations, which is essential for troubleshooting voice processing pipelines.
+
+---
 
 ## 2. Model Selection Justification
 
 ### Primary Model: Llama 3.3 70B Versatile
 
-**Why Llama 3.3 70B?**
-We chose Llama 3.3 70B Versatile as our primary model because it strikes the perfect balance between quality and performance for voice conversations. The 70 billion parameters ensure excellent reasoning capabilities and natural-sounding responses, while Groq's specialized Language Processing Unit (LPU) keeps inference times fast—typically 1-2 seconds, which is acceptable for voice interactions.
+The Llama 3.3 70B Versatile model was selected as the primary model because it provides an optimal balance between response quality and inference speed for voice conversations. The 70 billion parameters ensure excellent reasoning capabilities and natural-sounding responses that feel appropriate for voice interactions.
 
-The "Versatile" variant is specifically optimized for general-purpose conversations, making it ideal for our use case where users might ask about anything. Unlike specialized models that excel in one domain but fail in others, this model handles diverse topics well.
+Despite its large size, Groq's specialized Language Processing Unit (LPU) enables fast inference times of approximately 1-2 seconds, which is acceptable for voice conversations. The "Versatile" variant is specifically optimized for general-purpose conversations, making it suitable for diverse user queries without requiring domain-specific models.
 
-**Why Not Other Models?**
-- **Smaller Models (8B-13B)**: While faster, they produce noticeably lower quality responses that don't feel natural in voice conversations
-- **Larger Models (100B+)**: Better quality, but the additional latency (3-5 seconds) creates awkward pauses in voice calls
-- **Specialized Models**: Domain-specific models would require switching logic and don't fit our general-purpose assistant goal
+The model maintains conversation coherence through its large context window, allowing it to understand and reference previous parts of the conversation. This is essential for natural voice interactions where users may refer back to earlier statements.
 
-**Current Configuration:**
-- **Temperature: 1.0**: This setting balances creativity with consistency—responses feel natural but remain coherent
-- **Max Tokens: 1024**: Perfect for voice—long enough for complete thoughts, short enough to keep responses concise
-- **Context Window: 10 messages**: Maintains conversation flow without consuming excessive tokens or slowing down processing
+### Configuration Rationale
 
-## 3. Current Bottlenecks & Limitations
+**Temperature: 1.0**
+This setting balances creativity with consistency. Responses feel natural and varied while remaining coherent and contextually appropriate. Lower temperatures would make responses too repetitive, while higher temperatures could produce inconsistent or off-topic responses.
 
-### Performance Bottlenecks
+**Max Tokens: 1024**
+This limit is sufficient for complete, thoughtful responses in voice conversations while preventing excessively long replies that would be difficult to follow in an audio format. It ensures responses are concise enough to maintain user engagement.
 
-#### 1. **LLM API Latency (1-3 seconds)**
-The biggest bottleneck in our system is the time it takes for Groq's API to process and return a response. While 1-3 seconds is fast for LLM inference, it creates a noticeable pause in voice conversations. Users have to wait after speaking before hearing a response, which can feel unnatural. This is acceptable for now but could be improved with response streaming or caching common queries.
+**Context Window: 10 messages**
+Maintaining the last 10 messages provides sufficient conversation context without consuming excessive tokens or slowing down processing. This allows the model to reference recent conversation history while keeping API costs and latency manageable.
 
-#### 2. **TTS Generation Time (0.5-1.5 seconds)**
-Currently, we generate TTS audio files (MP3 → WAV conversion) before playing them. This adds another delay to the pipeline. While we have a fallback to Twilio's TTS, the file-based approach isn't optimal. **In production, we plan to implement WebSocket-based TTS streaming** to reduce this latency significantly.
+### Alternative Models Considered
 
-#### 3. **Sequential Processing Pipeline**
-Our current architecture processes steps one after another: STT (Twilio) → LLM → TTS → Response. This means total latency is the sum of all steps (typically 2-5 seconds). We could optimize this by starting TTS generation while the LLM is still processing, or by using WebSocket streaming for both STT and TTS.
+Smaller models (8B-13B parameters) were considered for faster inference, but they produce noticeably lower quality responses that don't feel natural in voice conversations. Larger models (100B+ parameters) offer better quality but introduce additional latency of 3-5 seconds, creating awkward pauses in voice calls. Specialized domain-specific models were not suitable for our general-purpose assistant use case, as they would require complex switching logic and fail on out-of-domain queries.
 
-#### 4. **STT Limitations**
-**Current**: We're using Twilio's built-in STT, which works well but has limitations:
-- No real-time streaming (waits for speech to end)
-- Limited customization options
-- Fixed recognition models
+---
 
-**Future**: For production, we can implement **WebSocket-based STT** (e.g., Deepgram, AssemblyAI) for:
-- Real-time transcription as user speaks
-- Lower latency
-- Custom model selection
-- Better accuracy for specific accents or domains
+## 3. Bottlenecks
 
-#### 5. **Audio File Storage**
-Generated audio files accumulate in the `audio_files/output/` directory. While not a critical issue, it requires periodic cleanup. We should implement automatic cleanup of files older than 24 hours.
+### LLM API Latency
 
-#### 6. **Conversation Memory**
-Conversations are stored in memory, which means they're lost on server restart. For production, we need persistent storage (database) to maintain conversation context across sessions and server restarts.
+The primary bottleneck is the time required for Groq's API to process and return responses, typically 1-3 seconds. While this is fast for LLM inference, it creates a noticeable pause in voice conversations. Users must wait after speaking before hearing a response, which can feel unnatural. This latency is acceptable for the current implementation but represents the largest opportunity for improvement.
 
-#### 7. **Single Server Architecture**
-Currently, all requests are handled by a single FastAPI instance. This works fine for moderate traffic but becomes a bottleneck at scale. We'll need load balancing and multiple instances for high-volume production use.
+### TTS Generation Time
 
-## 4. Planned Improvements & Future Enhancements
+The current file-based TTS approach requires generating MP3 files, converting them to WAV format, and serving them via HTTP. This process takes 0.5-1.5 seconds, adding to the total response latency. While the system has a fallback to Twilio TTS, the file-based approach is not optimal. WebSocket-based TTS streaming would significantly reduce this latency.
 
-### Short-Term Improvements (Easy to Implement - Next 1-2 Weeks)
+### Sequential Processing Pipeline
 
-#### 1. **Audio File Cleanup**
-- **Implementation**: Scheduled job to delete audio files older than 24 hours
-- **Benefit**: Prevents disk space issues
-- **Effort**: Low (1-2 hours)
+The current architecture processes steps sequentially: STT (Twilio) processes speech, then LLM generates response, then TTS creates audio, and finally the response is sent. This means total latency is the sum of all individual steps, typically 2-5 seconds. The pipeline could be optimized by starting TTS generation while the LLM is still processing, or by implementing WebSocket streaming for both STT and TTS.
 
-#### 2. **Conversation Persistence**
-- **Implementation**: Store conversations in database (SQLite/PostgreSQL)
-- **Benefit**: Survives server restarts, enables conversation history
-- **Effort**: Medium (4-6 hours)
+### STT Limitations
 
-#### 3. **Response Caching**
-- **Implementation**: Cache common LLM responses (greetings, FAQs)
-- **Benefit**: Reduces API calls and latency for frequent queries
-- **Effort**: Medium (3-4 hours)
+Currently using Twilio's built-in STT, which works well but has limitations. It does not provide real-time streaming transcription, instead waiting for speech to end before processing. There are limited customization options and fixed recognition models. For production, WebSocket-based STT would enable real-time transcription as users speak, provide lower latency, allow custom model selection, and offer better accuracy for specific use cases.
 
-#### 4. **Enhanced Error Handling**
-- **Implementation**: More specific error messages, retry logic for transient failures
-- **Benefit**: Better user experience during failures
-- **Effort**: Low (2-3 hours)
+### Audio File Storage
 
-#### 5. **Logging Improvements**
-- **Implementation**: Log rotation, log level configuration, structured error tracking
-- **Benefit**: Better debugging and monitoring
-- **Effort**: Low (2 hours)
+Generated audio files accumulate in the audio_files/output/ directory. While not critical, this requires periodic cleanup to prevent disk space issues. An automatic cleanup mechanism for files older than 24 hours should be implemented.
 
-### Medium-Term Improvements (Moderate Complexity - Next 1-3 Months)
+### Conversation Memory
 
-#### 1. **WebSocket-Based STT & TTS (Production Priority)**
-- **Current State**: Using Twilio's built-in STT and file-based TTS
-- **Implementation**: 
-  - Integrate WebSocket STT service (Deepgram/AssemblyAI) for real-time transcription
-  - Implement WebSocket TTS streaming for lower latency audio generation
-  - Stream audio chunks directly to Twilio instead of file-based approach
-- **Benefits**: 
-  - 40-60% reduction in total latency
-  - Real-time transcription as user speaks
-  - Better user experience with faster responses
-- **Effort**: High (10-15 hours)
-- **Priority**: High - Major improvement for production use
+Conversations are stored in memory, which means they are lost on server restart. This affects user experience during long conversations if the server crashes or needs to be restarted. For production, persistent storage such as a database should be implemented to maintain conversation context across sessions and server restarts.
 
-#### 2. **Streaming Responses**
-- **Implementation**: Stream LLM tokens as they're generated via WebSocket
-- **Benefit**: Perceived faster response time, better user experience
-- **Effort**: High (8-12 hours)
-- **Challenge**: Requires WebSocket integration with frontend and Twilio
+### Single Server Architecture
 
-#### 3. **Parallel Processing**
-- **Implementation**: Start TTS generation while LLM is processing (when using WebSocket TTS)
-- **Benefit**: Reduces total latency by ~30-40%
-- **Effort**: Medium (6-8 hours)
-- **Challenge**: Requires careful state management and WebSocket coordination
+All requests are currently handled by a single FastAPI instance. This works fine for moderate traffic but becomes a bottleneck at scale. For high-volume production use, load balancing and multiple instances will be necessary to handle increased traffic and provide redundancy.
 
-#### 4. **Multiple Model Support**
-- **Implementation**: Allow switching between models (fast vs. quality)
-- **Benefit**: Flexibility for different use cases
-- **Effort**: Medium (4-6 hours)
+---
 
-#### 5. **Rate Limiting**
-- **Implementation**: Per-user rate limiting to prevent abuse
-- **Benefit**: Cost control, fair usage
-- **Effort**: Medium (3-4 hours)
+## 4. Improvements Possible
 
-#### 6. **Health Monitoring**
-- **Implementation**: Health check endpoints, metrics collection
-- **Benefit**: Proactive issue detection
-- **Effort**: Medium (4-5 hours)
+### Short-Term Improvements (1-2 Weeks)
 
-### Long-Term Improvements (Complex)
+**Audio File Cleanup**
+Implement a scheduled job to automatically delete audio files older than 24 hours. This prevents disk space issues without requiring manual intervention. Estimated effort: 1-2 hours.
 
-#### 1. **Microservices Architecture**
-- **Implementation**: Separate services for STT, LLM, TTS, and routing
-- **Benefit**: Independent scaling, better fault tolerance
-- **Effort**: Very High (40+ hours)
-- **Challenge**: Requires infrastructure changes, service mesh
+**Conversation Persistence**
+Store conversations in a database (SQLite for development, PostgreSQL for production) instead of in-memory storage. This enables conversation history to survive server restarts and allows users to resume conversations. Estimated effort: 4-6 hours.
 
-#### 2. **Load Balancing**
-- **Implementation**: Multiple backend instances behind load balancer
-- **Benefit**: Handles high traffic, redundancy
-- **Effort**: High (12-16 hours)
-- **Challenge**: Requires orchestration (Docker Swarm, Kubernetes)
+**Response Caching**
+Cache common LLM responses for frequently asked questions, greetings, and standard responses. This reduces API calls, lowers costs, and decreases latency for cached queries. Estimated effort: 3-4 hours.
 
-#### 3. **Advanced Caching Layer**
-- **Implementation**: Redis cache for conversations, responses, and audio files
-- **Benefit**: Faster responses, reduced API costs
-- **Effort**: High (8-10 hours)
+**Enhanced Error Handling**
+Implement more specific error messages and retry logic for transient failures. This improves user experience during temporary issues and provides better debugging information. Estimated effort: 2-3 hours.
 
-#### 4. **Real-Time Analytics**
-- **Implementation**: Dashboard for call metrics, performance monitoring
-- **Benefit**: Data-driven optimization
-- **Effort**: High (10-12 hours)
+**Logging Improvements**
+Add log rotation, configurable log levels, and structured error tracking. This improves debugging capabilities and prevents log files from growing indefinitely. Estimated effort: 2 hours.
 
-#### 5. **Multi-Language Support**
-- **Implementation**: Language detection, multi-language TTS/STT
-- **Benefit**: Broader user base
-- **Effort**: High (12-16 hours)
+### Medium-Term Improvements (1-3 Months)
+
+**WebSocket-Based STT and TTS (Production Priority)**
+Integrate WebSocket STT service (Deepgram or AssemblyAI) for real-time transcription and implement WebSocket TTS streaming for lower latency audio generation. Stream audio chunks directly to Twilio instead of using file-based approach. This is expected to reduce total latency by 40-60% and provide a significantly better user experience. Estimated effort: 10-15 hours. Priority: High.
+
+**Streaming LLM Responses**
+Implement streaming of LLM tokens as they are generated via WebSocket. This provides perceived faster response time as users hear responses begin immediately rather than waiting for the complete response. Estimated effort: 8-12 hours.
+
+**Parallel Processing**
+Start TTS generation while the LLM is still processing the response. This reduces total latency by approximately 30-40% by overlapping processing steps. Requires careful state management and WebSocket coordination. Estimated effort: 6-8 hours.
+
+**Multiple Model Support**
+Allow switching between different models based on query complexity or user preference. Use smaller, faster models for simple queries and larger models for complex reasoning tasks. This provides flexibility for different use cases and can optimize costs. Estimated effort: 4-6 hours.
+
+**Rate Limiting**
+Implement per-user rate limiting to prevent abuse and control costs. This ensures fair usage and protects against excessive API calls. Estimated effort: 3-4 hours.
+
+**Health Monitoring**
+Add health check endpoints and metrics collection for proactive issue detection. This enables monitoring of system performance and early identification of problems. Estimated effort: 4-5 hours.
+
+### Long-Term Improvements (3+ Months)
+
+**Microservices Architecture**
+Separate the system into independent services for STT, LLM, TTS, and routing. This enables independent scaling of each component and provides better fault tolerance. Estimated effort: 40+ hours. Challenge: Requires significant infrastructure changes and service mesh implementation.
+
+**Load Balancing**
+Implement multiple backend instances behind a load balancer to handle high traffic and provide redundancy. This ensures the system can scale to handle increased usage. Estimated effort: 12-16 hours. Challenge: Requires orchestration infrastructure such as Docker Swarm or Kubernetes.
+
+**Advanced Caching Layer**
+Implement Redis cache for conversations, responses, and audio files. This provides faster responses and reduces API costs by serving cached content when appropriate. Estimated effort: 8-10 hours.
+
+**Real-Time Analytics Dashboard**
+Create a dashboard for call metrics, performance monitoring, and usage analytics. This enables data-driven optimization and provides insights into system performance. Estimated effort: 10-12 hours.
+
+**Multi-Language Support**
+Implement language detection and multi-language TTS/STT support. This expands the user base to international markets. Estimated effort: 12-16 hours.
 
 ### Performance Optimization Opportunities
 
-#### 1. **Connection Pooling**
-- **Current**: New HTTP connections for each API call
-- **Improvement**: Reuse connections with connection pooling
-- **Expected Gain**: 10-15% latency reduction
+**Connection Pooling**
+Currently, new HTTP connections are created for each API call. Implementing connection pooling to reuse connections would reduce latency by approximately 10-15%.
 
-#### 2. **Batch Processing**
-- **Current**: Process one request at a time
-- **Improvement**: Batch multiple requests when possible
-- **Expected Gain**: Better throughput for high load
+**Batch Processing**
+Instead of processing one request at a time, batch multiple requests when possible. This improves throughput under high load conditions.
 
-#### 3. **CDN for Audio Files**
-- **Current**: Serve audio files from same server
-- **Improvement**: Use CDN for faster global delivery
-- **Expected Gain**: Reduced latency for international users
+**CDN for Audio Files**
+Serve audio files from a Content Delivery Network instead of the same server. This reduces latency for international users by serving files from geographically closer locations.
 
-#### 4. **Model Optimization**
-- **Current**: Full 70B model for all requests
-- **Improvement**: Use smaller model for simple queries, larger for complex
-- **Expected Gain**: 30-50% latency reduction for simple queries
+**Model Optimization**
+Use smaller models for simple queries and larger models only for complex reasoning tasks. This can reduce latency by 30-50% for simple queries while maintaining quality for complex ones.
+
+---
 
 ## Summary
 
-### Current State (Version 1.0.0)
+The current architecture (Version 1.0.0) prioritizes simplicity and reliability over optimization. The system uses Twilio's built-in STT and file-based TTS, which work well for moderate-scale production use. The sequential processing pipeline provides predictable behavior but results in 2-5 second total latency.
 
-Our current architecture prioritizes **simplicity and reliability** over optimization. We're using:
-- **Twilio's built-in STT** for speech recognition (works well, no additional service needed)
-- **File-based TTS** (gTTS → MP3 → WAV conversion) with Twilio TTS fallback
-- **Sequential processing** pipeline (STT → LLM → TTS → Response)
+Key strengths include a fast, modern tech stack, reliable fallback mechanisms, comprehensive logging, and good error handling. The modular architecture makes it easy to implement improvements incrementally without major rewrites.
 
-The system is well-suited for moderate-scale production use with room for incremental improvements. Key strengths include:
-
-- ✅ Fast, modern tech stack
-- ✅ Reliable fallback mechanisms
-- ✅ Comprehensive logging
-- ✅ Good error handling
-- ✅ Simple architecture, easy to understand and maintain
-
-### Production Roadmap
-
-**Phase 1 (Current)**: Using built-in STT/TTS - Simple, reliable, works out of the box
-
-**Phase 2 (Next 1-3 months)**: 
-- Implement **WebSocket-based STT** for real-time transcription
-- Implement **WebSocket-based TTS** for streaming audio generation
-- Expected latency reduction: 40-60%
-
-**Phase 3 (Future)**:
-- Streaming LLM responses
-- Parallel processing optimization
-- Advanced caching and scaling
-
-### Key Takeaway
-
-The modular architecture makes it easy to swap out components. We can upgrade from built-in STT/TTS to WebSocket-based services without major rewrites. This flexibility allows us to start simple and optimize based on actual usage patterns and requirements.
-
-Primary areas for improvement focus on **latency reduction** (via WebSocket STT/TTS) and **scalability** as usage grows. The current implementation provides a solid foundation that can be enhanced incrementally.
-
+The primary focus for improvements is latency reduction through WebSocket-based STT and TTS implementation, which is planned as a high-priority medium-term enhancement. This, combined with parallel processing and response caching, can reduce total latency by 50-70% while maintaining system reliability.
