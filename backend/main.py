@@ -82,8 +82,11 @@ class JSONLogger:
             log.error(f"Failed to save logs: {e}")
     
     def log_event(self, event_type, call_sid=None, step=None, data=None, duration=None):
+        now = datetime.now()
         log_entry = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": now.isoformat(),
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M:%S.%f")[:-3],  # Include milliseconds (3 digits)
             "event_type": event_type,
             "call_sid": call_sid,
             "step": step,
