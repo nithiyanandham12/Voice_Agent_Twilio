@@ -126,9 +126,6 @@ def get_llm_response(messages, model=GROQ_LLM_MODEL, timeout=30):
     Returns: AI-generated text response
     Raises: TimeoutError if request times out, Exception for other errors
     """
-    import asyncio
-    import signal
-    
     try:
         # Note: Groq SDK doesn't have built-in timeout, but we handle it at the exception level
         completion = groq_client.chat.completions.create(
