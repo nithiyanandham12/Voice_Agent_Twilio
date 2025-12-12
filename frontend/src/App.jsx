@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'https://nithiyanandham15-voicecallendpoint.hf.space';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 function App() {
   const [isCallActive, setIsCallActive] = useState(false);
